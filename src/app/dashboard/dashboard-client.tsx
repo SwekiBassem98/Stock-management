@@ -83,10 +83,7 @@ export default function DashboardClient({ data }: Props) {
         const response = await fetch('/api/users', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            ...userData,
-            createdBy: 1, // Assuming admin user ID is 1
-          }),
+          body: JSON.stringify(userData),
         });
 
         if (!response.ok) {

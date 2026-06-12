@@ -37,6 +37,26 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Username and password are required' }, { status: 400 });
     }
 
+    const parsedCreatedBy = createdBy === undefined || createdBy === null || createdBy === ''
+      ? undefined
+      : Number(createdBy);
+
+    if (parsedCreatedBy !== undefined && (!Number.isInteger(parsedCreatedBy) || parsedCreatedBy <= 0)) {
+      return NextResponse.json({ error: 'Invalid creator user' }, { status: 400 });
+    }
+
+    const data: any = {
+      username,
+      password, // In production, hash this password
+      role: role || 'CONSULTANT',
+      email,
+      fullName,
+    };
+
+    if (parsedCreatedBy !== undefined) {
+      data.createdBy = parsedCreatedBy;
+    }
+
     // Check if username already exists
     const existingUser = await prisma.user.findUnique({
       where: { username }
@@ -48,14 +68,7 @@ export async function POST(request: NextRequest) {
 
     // Create user
     const user = await prisma.user.create({
-      data: {
-        username,
-        password, // In production, hash this password
-        role: role || 'CONSULTANT',
-        email,
-        fullName,
-        createdBy
-      },
+      data,
       include: {
         creator: {
           select: { id: true, username: true, fullName: true }
