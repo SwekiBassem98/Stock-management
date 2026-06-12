@@ -60,6 +60,10 @@ export default function InvoiceDetailClient({ invoice, variants, categories }: P
     router.refresh();
   };
 
+  const handleOpenCreateMaterial = () => {
+    setIsCreateMaterialModalOpen(true);
+  };
+
   const handleCreateMaterial = async (formData: FormData) => {
     setIsCreating(true);
     try {
