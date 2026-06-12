@@ -1,0 +1,324 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite" // swap to "postgresql" later if needed
+  url      = env("DATABASE_URL")
+}
+
+/* ===== Enums ===== */
+
+enum MovementType {
+  IN
+  OUT
+  ADJUST
+}
+
+enum DocumentSourceType {
+  SUPPLIER_INVOICE_LINE
+  SUPPLIER_ORDER_RECEIPT
+  WORK_ORDER_LINE
+  ADJUSTMENT
+}
+
+enum SupplierOrderStatus {
+  DRAFT
+  SENT
+  CONFIRMED
+  PARTIALLY_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PARTIALLY_PAID
+  PAID
+  CANCELLED
+}
+
+enum ProjectStatus {
+  DRAFT
+  OPEN
+  DELIVERED
+  CANCELLED
+}
+
+enum WorkOrderStatus {
+  DRAFT
+  RELEASED
+  IN_PROGRESS
+  DONE
+  CANCELLED
+}
+
+enum ReminderContactType {
+  PHONE
+  EMAIL
+  VISIT
+  MESSAGE
+  OTHER
+}
+
+enum UserRole {
+  ADMIN
+  CONSULTANT
+}
+
+/* ===== Users ===== */
+
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique
+  password  String   // In production, this should be hashed
+  role      UserRole @default(CONSULTANT)
+  email     String?
+  fullName  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy Int?     // ID of admin who created this user
+  creator   User?    @relation("UserCreator", fields: [createdBy], references: [id])
+  createdUsers User[] @relation("UserCreator")
+
+  @@index([username])
+  @@index([role])
+}
+
+/* ===== Références ===== */
+
+// CAT_MP
+model Category {
+  id         Int        @id @default(autoincrement()) // ID_Categorie
+  name       String     @unique                       // Nom_Categorie
+  materials  Material[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+}
+
+// MP
+model Material {
+  id          Int        @id @default(autoincrement())         // ID_Matiere
+  categoryId  Int                                          // -> CATEGORIE_MP
+  category    Category   @relation(fields: [categoryId], references: [id])
+  name        String                                         // Nom_Matiere
+  unit        String                                         // Unite_Mesure
+  packaging   String?                                        // emballage
+  variants    Variant[]
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@unique([categoryId, name])
+}
+
+// VARIETE (stockable)
+model Variant {
+  id               Int        @id @default(autoincrement()) // ID_Variete
+  materialId       Int                                        // -> MATIERE_PREMIERE
+  material         Material   @relation(fields: [materialId], references: [id])
+  supplierRef      String?    // Reference_Fabricant
+  internalRef      String?    // Reference Production local
+  color            String?    // Couleur
+  thickness        String?    // Epaisseur (string; change to Decimal if needed)
+  avgUnitPrice     Decimal    @default(0) // Prix_Unitaire_Moyen
+  minAlert         Decimal    @default(0) // Seuil_Alerte_Min
+  initialQuantity  Decimal    @default(0) // Initial quantity when variant is created
+  stock            Stock?
+  movements        Movement[]
+  invoiceLines     SupplierInvoiceLine[]
+  workOrderLines   WorkOrderLine[]
+  orderLines       SupplierOrderLine[]
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  @@index([internalRef])
+  @@index([supplierRef])
+}
+
+// FOURNISSEUR
+model Supplier {
+  id             Int                 @id @default(autoincrement()) // ID_Fournisseur
+  name           String              @unique                       // Nom_Fournisseur
+  address        String?                                             // Adresse
+  currentBalance Decimal            @default(0)                    // Solde_Actuel
+  orders         SupplierOrder[]
+  invoices       SupplierInvoice[]
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+}
+
+/* ===== Commande FRS (Supplier Orders) ===== */
+
+model SupplierOrder {
+  id                     Int                  @id @default(autoincrement()) // ID_Commande_F
+  supplierId             Int
+  supplier               Supplier             @relation(fields: [supplierId], references: [id])
+  reference              String?              // optional human ref
+  orderDate              DateTime             // Date_Commande
+  requestedDeliveryDate  DateTime?            // Date_Livraison_Souhaitee
+  status                 SupplierOrderStatus  @default(DRAFT) // Statut_Commande
+  shippingMethod         String?              // moyen de livraison
+  lines                  SupplierOrderLine[]
+  reminders              SupplierOrderReminder[]
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+}
+
+model SupplierOrderLine {
+  id                Int           @id @default(autoincrement()) // ID_Ligne_Com_F
+  orderId           Int
+  order             SupplierOrder @relation(fields: [orderId], references: [id])
+  variantId         Int
+  variant           Variant       @relation(fields: [variantId], references: [id])
+  quantityOrdered   Decimal       // Quantite_Commandee
+  quantityReceived  Decimal       @default(0) // Quantite_Recue
+  lastReceiptDate   DateTime?     // Date reception
+  createdAt         DateTime      @default(now())
+
+  @@index([variantId])
+}
+
+model SupplierOrderReminder {
+  id           Int                  @id @default(autoincrement()) // ID_Relance
+  orderId      Int
+  order        SupplierOrder        @relation(fields: [orderId], references: [id])
+  reminderDate DateTime             // Date_Relance
+  contactType  ReminderContactType  // Type_Contact
+  subject      String?              // Objet_Relance
+  result       String?              // Resultat_Relance
+  createdAt    DateTime             @default(now())
+
+  @@index([orderId])
+}
+
+/* ===== Stock ===== */
+
+model Stock {
+  id          Int      @id @default(autoincrement())
+  variantId   Int      @unique // composite by business, unique by schema
+  variant     Variant  @relation(fields: [variantId], references: [id])
+  currentQty  Decimal  @default(0) // Quantite_Actuelle
+  lastUpdated DateTime @default(now()) // Date_Derniere_MAJ
+}
+
+model Movement {
+  id           Int                @id @default(autoincrement()) // ID_Mouvement
+  variantId    Int
+  variant      Variant            @relation(fields: [variantId], references: [id]) // -> VARIETE
+  type         MovementType       // Type_Mouvement
+  quantity     Decimal            // Quantite
+  unitPrice    Decimal?           // for IN movements (costing)
+  movementDate DateTime           @default(now()) // Date_Mouvement
+  documentType DocumentSourceType?
+  documentId   Int?               // #ID_Document_Source
+  note         String?
+  createdAt    DateTime           @default(now())
+
+  @@index([variantId, movementDate])
+  @@index([documentType, documentId])
+}
+
+/* ===== Achats (Invoices) ===== */
+
+model SupplierInvoice {
+  id         Int                 @id @default(autoincrement()) // ID_Facture
+  supplierId Int
+  supplier   Supplier            @relation(fields: [supplierId], references: [id]) // -> FOURNISSEUR
+  number     String              @unique // Numero_Facture
+  date       DateTime            // Date_Facture
+  totalTTC   Decimal             @default(0) // Montant_TTC
+  status     InvoiceStatus       @default(OPEN) // Statut_Paiement
+  lines      SupplierInvoiceLine[]
+  createdAt  DateTime            @default(now())
+  updatedAt  DateTime            @updatedAt
+}
+
+model SupplierInvoiceLine {
+  id                 Int             @id @default(autoincrement()) // ID_Ligne_Facture
+  invoiceId          Int
+  invoice            SupplierInvoice @relation(fields: [invoiceId], references: [id]) // -> FACTURE_FRS
+  variantId          Int
+  variant            Variant         @relation(fields: [variantId], references: [id])
+  quantity           Decimal         // Quantite_Facturee
+  unitPurchasePrice  Decimal         // Prix_Achat_Unitaire
+  createdAt          DateTime        @default(now())
+
+  @@index([variantId])
+}
+
+/* ===== Production (unchanged structurally from your draft) ===== */
+
+model Project {
+  id          Int          @id @default(autoincrement()) // ID_Commande
+  orderDate   DateTime     // Date_Commande
+  description String?      // Description_Meuble
+  status      ProjectStatus @default(OPEN) // Statut_Commande
+  workOrders  WorkOrder[]
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model WorkOrder {
+  id         Int              @id @default(autoincrement()) // ID_OF
+  number     String?          @unique
+  projectId  Int?
+  project    Project?         @relation(fields: [projectId], references: [id]) // -> COMMANDE_CLIENT
+  issueDate  DateTime         @default(now()) // Date_Emission
+  startDate  DateTime?        // Date_Debut_Reel
+  endDate    DateTime?        // Date_Fin_Reelle
+  status     WorkOrderStatus  @default(DRAFT)
+  lines      WorkOrderLine[]
+  trackings  ProductionTracking[]
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+}
+
+model WorkOrderLine {
+  id           Int       @id @default(autoincrement()) // ID_Ligne_OF
+  workOrderId  Int
+  workOrder    WorkOrder @relation(fields: [workOrderId], references: [id]) // -> OF
+  variantId    Int
+  variant      Variant   @relation(fields: [variantId], references: [id])
+  quantity     Decimal   // Quantite_Affectee
+  createdAt    DateTime  @default(now())
+
+  @@index([variantId])
+}
+
+model Operation {
+  id                 Int                 @id @default(autoincrement()) // ID_Operation
+  name               String              // Nom_Operation
+  standardHourlyCost Decimal             @default(0) // Cout_Unitaire_Standard
+  trackings          ProductionTracking[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model Personnel {
+  id                 Int                 @id @default(autoincrement()) // ID_Personnel
+  name               String              // Nom_Personnel
+  role               String?             // Role
+  standardHourlyRate Decimal             @default(0) // Taux_Horaire_Standard
+  trackings          ProductionTracking[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+}
+
+model ProductionTracking {
+  id           Int        @id @default(autoincrement()) // ID_Suivi
+  workOrderId  Int
+  workOrder    WorkOrder  @relation(fields: [workOrderId], references: [id]) // -> BON_PRODUCTION (OF)
+  operationId  Int
+  operation    Operation  @relation(fields: [operationId], references: [id])
+  personnelId  Int
+  personnel    Personnel  @relation(fields: [personnelId], references: [id])
+  hours        Decimal    // Heures_Passees
+  calculatedCost Decimal  @default(0) // Cout_Total_Calcule
+  createdAt    DateTime   @default(now())
+
+  @@index([workOrderId])
+  @@index([operationId])
+  @@index([personnelId])
+}
