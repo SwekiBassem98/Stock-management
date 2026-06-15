@@ -1,3 +1,7 @@
+import * as XLSX from 'xlsx';
+
+export const MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024;
+
 export type CsvImportError = {
   row: number;
   field: string;
@@ -35,6 +39,45 @@ export const normalizeHeader = (header: string) =>
 
 export const normalizeText = (value: string) =>
   value.trim().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+function parseRows(rows: string[][]): ParsedCsv {
+  const firstNonEmptyRowIndex = rows.findIndex((row) => row.some((cell) => cell.trim() !== ''));
+
+  if (firstNonEmptyRowIndex === -1) {
+    return {
+      headers: [],
+      rows: [],
+      errors: [{ row: 1, field: 'file', message: 'Le fichier est vide.' }],
+    };
+  }
+
+  const normalizedRows = rows.slice(firstNonEmptyRowIndex);
+  const headers = normalizedRows[0].map((header) => normalizeHeader(header));
+
+  if (headers.length === 0 || headers.every((header) => header === '')) {
+    return {
+      headers: [],
+      rows: [],
+      errors: [{ row: firstNonEmptyRowIndex + 1, field: 'file', message: 'Le fichier ne contient pas d\'en-têtes.' }],
+    };
+  }
+
+  const dataRows = normalizedRows.slice(1).map<ParsedCsvRow>((raw, index) => {
+    const values: Record<string, string> = {};
+
+    headers.forEach((header, headerIndex) => {
+      values[header] = (raw[headerIndex] ?? '').trim();
+    });
+
+    return {
+      lineNumber: firstNonEmptyRowIndex + index + 2,
+      raw,
+      values,
+    };
+  });
+
+  return { headers, rows: dataRows, errors: [] };
+}
 
 export function parseCsvContent(content: string): ParsedCsv {
   const normalizedContent = content.replace(/^\uFEFF/, '');
@@ -85,7 +128,7 @@ export function parseCsvContent(content: string): ParsedCsv {
     return {
       headers: [],
       rows: [],
-      errors: [{ row: 1, field: 'csv', message: 'Le fichier contient des guillemets non fermés.' }],
+      errors: [{ row: 1, field: 'file', message: 'Le fichier contient des guillemets non fermés.' }],
     };
   }
 
@@ -94,39 +137,47 @@ export function parseCsvContent(content: string): ParsedCsv {
     rows.push(row);
   }
 
-  if (rows.length === 0) {
+  return parseRows(rows);
+}
+
+export function parseSpreadsheetBuffer(buffer: ArrayBuffer): ParsedCsv {
+  try {
+    const workbook = XLSX.read(buffer, { type: 'buffer', cellDates: true });
+
+    if (workbook.SheetNames.length === 0) {
+      return {
+        headers: [],
+        rows: [],
+        errors: [{ row: 1, field: 'file', message: 'Le fichier Excel ne contient aucune feuille.' }],
+      };
+    }
+
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rawRows = XLSX.utils.sheet_to_json<unknown[]>(worksheet, { header: 1, defval: '' });
+    const rows = rawRows.map((row) => row.map((cell) => normalizeSpreadsheetCell(cell)));
+
+    return parseRows(rows);
+  } catch (error) {
     return {
       headers: [],
       rows: [],
-      errors: [{ row: 1, field: 'csv', message: 'Le fichier CSV est vide.' }],
+      errors: [{ row: 1, field: 'file', message: 'Le fichier Excel est invalide ou impossible à lire.' }],
     };
   }
+}
 
-  const headers = rows[0].map((header) => normalizeHeader(header));
+function normalizeSpreadsheetCell(cell: unknown) {
+  if (cell === null || cell === undefined) return '';
 
-  if (headers.length === 0 || headers.every((header) => header === '')) {
-    return {
-      headers: [],
-      rows: [],
-      errors: [{ row: 1, field: 'csv', message: 'Le fichier CSV ne contient pas d\'en-têtes.' }],
-    };
+  if (cell instanceof Date) {
+    return cell.toISOString().slice(0, 10);
   }
 
-  const dataRows = rows.slice(1).map<ParsedCsvRow>((raw, index) => {
-    const values: Record<string, string> = {};
+  if (typeof cell === 'number') {
+    return Number.isInteger(cell) ? String(cell) : String(cell);
+  }
 
-    headers.forEach((header, headerIndex) => {
-      values[header] = (raw[headerIndex] ?? '').trim();
-    });
-
-    return {
-      lineNumber: index + 2,
-      raw,
-      values,
-    };
-  });
-
-  return { headers, rows: dataRows, errors: [] };
+  return String(cell).trim();
 }
 
 export function resolveHeader(headers: string[], aliases: string[]) {

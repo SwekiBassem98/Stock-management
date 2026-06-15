@@ -3,7 +3,7 @@
 import { prisma } from '@/lib/prisma';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { buildCsvError, normalizeText, parseCsvContent, resolveHeader, type CsvImportResult } from '../import-csv';
+import { buildCsvError, MAX_IMPORT_FILE_SIZE, normalizeText, parseCsvContent, parseSpreadsheetBuffer, resolveHeader, type CsvImportResult } from '../import-csv';
 
 const schema = z.object({
   categoryId: z.coerce.number().int().positive(),
@@ -13,12 +13,28 @@ const schema = z.object({
   initialQuantity: z.coerce.number().nonnegative().default(0),
 });
 
-async function getCsvContent(formData: FormData) {
+async function getImportContent(formData: FormData) {
   const entry = formData.get('csv');
 
   if (!entry) return null;
-  if (typeof entry === 'string') return entry;
-  if (entry instanceof File) return entry.text();
+
+  if (entry instanceof File) {
+    const name = entry.name.toLowerCase();
+
+    if (name.endsWith('.csv')) {
+      return { content: await entry.text(), isSpreadsheet: false };
+    }
+
+    if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
+      return { content: await entry.arrayBuffer(), isSpreadsheet: true };
+    }
+
+    return { error: buildCsvError(1, 'file', 'Format non supporté. Utilisez .xlsx, .xls ou .csv.') };
+  }
+
+  if (typeof entry === 'string') {
+    return { content: entry, isSpreadsheet: false };
+  }
 
   return null;
 }
@@ -145,17 +161,27 @@ export async function deleteMaterial(formData: FormData): Promise<void> {
 }
 
 export async function importCsvMaterials(formData: FormData): Promise<CsvImportResult> {
-  const csvContent = await getCsvContent(formData);
+  const importContent = await getImportContent(formData);
 
-  if (!csvContent) {
-    return emptyResult([buildCsvError(1, 'csv', 'Aucun fichier CSV n’a été envoyé.')]);
+  if (!importContent) {
+    return emptyResult([buildCsvError(1, 'file', 'Aucun fichier n’a été envoyé.')]);
   }
 
-  if (csvContent.length > 1_000_000) {
-    return emptyResult([buildCsvError(1, 'csv', 'Le fichier CSV est trop volumineux. La taille maximale est de 1 Mo.')]);
+  if (importContent.error) {
+    return emptyResult([importContent.error]);
   }
 
-  const parsedCsv = parseCsvContent(csvContent);
+  const fileSize = importContent.content instanceof ArrayBuffer
+    ? importContent.content.byteLength
+    : new Blob([importContent.content]).size;
+
+  if (fileSize > MAX_IMPORT_FILE_SIZE) {
+    return emptyResult([buildCsvError(1, 'file', `Le fichier est trop volumineux. La taille maximale est de ${MAX_IMPORT_FILE_SIZE / (1024 * 1024)} Mo.`)]);
+  }
+
+  const parsedCsv = importContent.isSpreadsheet
+    ? parseSpreadsheetBuffer(importContent.content as ArrayBuffer)
+    : parseCsvContent(importContent.content as string);
 
   if (parsedCsv.errors.length > 0) {
     return emptyResult(parsedCsv.errors);
