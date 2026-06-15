@@ -16,6 +16,7 @@ interface OrderLine {
     id: number;
     internalRef: string | null;
     supplierRef: string | null;
+    thickness?: string | null;
     material: {
       name: string;
     };
@@ -134,7 +135,9 @@ export const generateSupplierOrderPDF = (order: Order) => {
   // Table data preparation
   const tableData = order.lines.length > 0 ? order.lines.map((line) => {
     const variantName = line.variant.material.name;
-    const variantRef = line.variant.internalRef || line.variant.supplierRef || `ID: ${line.variant.id}`;
+    const variantRef = [line.variant.internalRef || line.variant.supplierRef || `ID: ${line.variant.id}`, line.variant.thickness]
+      .filter(Boolean)
+      .join(' ');
     const remaining = Number(line.quantityOrdered) - Number(line.quantityReceived);
     
     return [
