@@ -47,7 +47,10 @@ export default function CsvImportModal({
       const formData = new FormData(event.currentTarget);
       const importResult = await importAction(formData);
       setResult(importResult);
-      onComplete();
+
+      if (importResult.errors.length === 0 && importResult.warnings.length === 0) {
+        onComplete();
+      }
     } finally {
       setIsLoading(false);
     }

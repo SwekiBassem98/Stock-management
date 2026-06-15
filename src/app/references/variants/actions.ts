@@ -80,6 +80,15 @@ function variantIdentity(variant: {
   ].join('|').toLowerCase();
 }
 
+function hasVariantIdentifier(variant: {
+  supplierRef?: string | null;
+  internalRef?: string | null;
+  color?: string | null;
+  thickness?: string | null;
+}) {
+  return Boolean(variant.supplierRef || variant.internalRef || variant.color || variant.thickness);
+}
+
 export async function createVariant(formData: FormData): Promise<void> {
   const parsed = schema.safeParse({
     materialId: formData.get('materialId'),
@@ -253,7 +262,9 @@ export async function importCsvVariants(formData: FormData): Promise<CsvImportRe
       thickness: true,
     },
   });
-  const existingVariantKeys = new Set(existingVariants.map(variantIdentity));
+  const existingVariantKeys = new Set(
+    existingVariants.filter(hasVariantIdentifier).map(variantIdentity)
+  );
 
   for (const row of parsedCsv.rows) {
     const materialValue = row.values[materialHeader]?.trim();
@@ -320,20 +331,24 @@ export async function importCsvVariants(formData: FormData): Promise<CsvImportRe
       minAlert,
       initialQuantity,
     };
-    const variantKey = variantIdentity(variantPayload);
+    const hasIdentifier = hasVariantIdentifier(variantPayload);
 
-    if (seenVariants.has(variantKey)) {
-      skipped += 1;
-      warnings.push(`Ligne ${row.lineNumber}: cette variante est déjà présente dans ce fichier.`);
-      continue;
-    }
+    if (hasIdentifier) {
+      const variantKey = variantIdentity(variantPayload);
 
-    seenVariants.add(variantKey);
+      if (seenVariants.has(variantKey)) {
+        skipped += 1;
+        warnings.push(`Ligne ${row.lineNumber}: cette variante est déjà présente dans ce fichier.`);
+        continue;
+      }
 
-    if (existingVariantKeys.has(variantKey)) {
-      skipped += 1;
-      warnings.push(`Ligne ${row.lineNumber}: cette variante existe déjà.`);
-      continue;
+      seenVariants.add(variantKey);
+
+      if (existingVariantKeys.has(variantKey)) {
+        skipped += 1;
+        warnings.push(`Ligne ${row.lineNumber}: cette variante existe déjà.`);
+        continue;
+      }
     }
 
     toCreate.push(variantPayload);
