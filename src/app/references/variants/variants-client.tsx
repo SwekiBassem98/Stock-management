@@ -1,14 +1,24 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { createVariant, updateVariant, deleteVariant, importCsvVariants } from './actions';
 import Modal from '@/components/ui/modal';
 import ViewToggle from '@/components/ui/view-toggle';
 import CsvImportModal from '../csv-import-modal';
 
+interface PaginationState {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  query: string;
+}
+
 interface VariantsClientProps {
   variants: any[];
   materials: any[];
+  pagination: PaginationState;
 }
 
 function VariantCard({ variant, onEdit, onDelete }: { variant: any, onEdit: (variant: any) => void, onDelete: (id: number) => void }) {
@@ -162,7 +172,47 @@ function VariantsTable({ variants, onEdit, onDelete }: { variants: any[], onEdit
   );
 }
 
-export default function VariantsClient({ variants, materials }: VariantsClientProps) {
+function PaginationControls({
+  pagination,
+  buildPageUrl,
+}: {
+  pagination: PaginationState;
+  buildPageUrl: (page: number) => string;
+}) {
+  return (
+    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white rounded-xl border border-gray-200 px-4 py-3">
+      <p className="text-sm text-gray-600">
+        Affichage de <span className="font-semibold text-gray-900">{pagination.total === 0 ? 0 : (pagination.page - 1) * pagination.pageSize + 1}</span> à{' '}
+        <span className="font-semibold text-gray-900">{Math.min(pagination.page * pagination.pageSize, pagination.total)}</span> sur{' '}
+        <span className="font-semibold text-gray-900">{pagination.total}</span> variantes
+      </p>
+      <div className="flex items-center gap-2">
+        <a
+          href={buildPageUrl(Math.max(1, pagination.page - 1))}
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${pagination.page === 1 ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+          aria-disabled={pagination.page === 1}
+        >
+          Précédent
+        </a>
+        <span className="px-3 py-2 text-sm font-medium text-gray-700">
+          Page {pagination.page} / {pagination.totalPages}
+        </span>
+        <a
+          href={buildPageUrl(Math.min(pagination.totalPages, pagination.page + 1))}
+          className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${pagination.page >= pagination.totalPages ? 'bg-gray-100 text-gray-400 cursor-not-allowed' : 'bg-indigo-600 text-white hover:bg-indigo-700'}`}
+          aria-disabled={pagination.page >= pagination.totalPages}
+        >
+          Suivant
+        </a>
+      </div>
+    </div>
+  );
+}
+
+export default function VariantsClient({ variants, materials, pagination }: VariantsClientProps) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [view, setView] = useState<'table' | 'grid'>('table');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -196,6 +246,32 @@ export default function VariantsClient({ variants, materials }: VariantsClientPr
     window.location.reload();
   };
 
+  const buildPageUrl = (page: number) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('page', String(page));
+
+    return `${pathname}?${params.toString()}`;
+  };
+
+  const handleSearch = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    const formData = new FormData(event.currentTarget);
+    const query = String(formData.get('q') || '').trim();
+    const params = new URLSearchParams(searchParams.toString());
+
+    if (query) {
+      params.set('q', query);
+    } else {
+      params.delete('q');
+    }
+
+    params.delete('page');
+
+    const queryString = params.toString();
+    router.push(queryString ? `${pathname}?${queryString}` : pathname);
+  };
+
   const handleEditSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -215,7 +291,7 @@ export default function VariantsClient({ variants, materials }: VariantsClientPr
         </div>
         <div className="flex items-center gap-4">
           <span className="text-sm text-gray-500">
-            {variants.length} {variants.length === 1 ? 'variante' : 'variantes'}
+            {pagination.total} {pagination.total === 1 ? 'variante' : 'variantes'}
           </span>
           <ViewToggle view={view} onViewChange={setView} />
           <button
@@ -239,31 +315,78 @@ export default function VariantsClient({ variants, materials }: VariantsClientPr
         </div>
       </div>
 
+      <form onSubmit={handleSearch} className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
+        <div className="flex flex-col md:flex-row md:items-center gap-3">
+          <div className="relative flex-1">
+            <svg className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              name="q"
+              type="search"
+              defaultValue={pagination.query}
+              placeholder="Rechercher par matériau, catégorie, référence, couleur ou épaisseur"
+              className="w-full pl-11 pr-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors"
+            />
+          </div>
+          <div className="flex gap-3">
+            <button
+              type="submit"
+              className="px-5 py-3 rounded-lg bg-orange-600 text-white font-medium hover:bg-orange-700 transition-colors"
+            >
+              Rechercher
+            </button>
+            {(pagination.query || pagination.page > 1) && (
+              <a
+                href={pathname}
+                className="px-5 py-3 rounded-lg bg-gray-100 text-gray-700 font-medium hover:bg-gray-200 transition-colors"
+              >
+                Réinitialiser
+              </a>
+            )}
+          </div>
+        </div>
+        {pagination.query && (
+          <p className="mt-3 text-sm text-gray-600">
+            Résultats filtrés pour: <span className="font-medium text-gray-900">&quot;{pagination.query}&quot;</span>
+          </p>
+        )}
+      </form>
+
       {/* Content */}
       {variants.length > 0 ? (
-        view === 'table' ? (
-          <VariantsTable variants={variants} onEdit={handleEdit} onDelete={handleDelete} />
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {variants.map((variant) => (
-              <VariantCard
-                key={variant.id}
-                variant={variant}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
-            ))}
-          </div>
-        )
+        <>
+          {view === 'table' ? (
+            <VariantsTable variants={variants} onEdit={handleEdit} onDelete={handleDelete} />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {variants.map((variant) => (
+                <VariantCard
+                  key={variant.id}
+                  variant={variant}
+                  onEdit={handleEdit}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          )}
+          <PaginationControls pagination={pagination} buildPageUrl={buildPageUrl} />
+        </>
       ) : (
         <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
           <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
             </svg>
           </div>
-          <h3 className="text-lg font-medium text-gray-900 mb-2">Aucune variante pour le moment</h3>
-          <p className="text-gray-600 mb-4">Commencez par créer votre première variante.</p>
+          <h3 className="text-lg font-medium text-gray-900 mb-2">
+            {pagination.query ? 'Aucune variante trouvée' : 'Aucune variante pour le moment'}
+          </h3>
+          <p className="text-gray-600 mb-4">
+            {pagination.query
+              ? 'Essayez avec un autre terme de recherche.'
+              : 'Commencez par créer votre première variante.'}
+          </p>
           <div className="flex justify-center gap-3">
             <button
               onClick={() => setIsImportModalOpen(true)}

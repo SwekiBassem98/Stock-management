@@ -156,7 +156,16 @@ export async function updateVariant(formData: FormData): Promise<void> {
 
 export async function deleteVariant(formData: FormData): Promise<void> {
   const id = z.coerce.number().int().positive().parse(formData.get('id'));
-  await prisma.variant.delete({ where: { id } });
+
+  await prisma.$transaction(async (tx) => {
+    await tx.stock.deleteMany({ where: { variantId: id } });
+    await tx.movement.deleteMany({ where: { variantId: id } });
+    await tx.supplierInvoiceLine.deleteMany({ where: { variantId: id } });
+    await tx.workOrderLine.deleteMany({ where: { variantId: id } });
+    await tx.supplierOrderLine.deleteMany({ where: { variantId: id } });
+    await tx.variant.delete({ where: { id } });
+  });
+
   revalidatePath('/references/variants');
 }
 
