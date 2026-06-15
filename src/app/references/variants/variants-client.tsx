@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { createVariant, updateVariant, deleteVariant } from './actions';
+import { createVariant, updateVariant, deleteVariant, importCsvVariants } from './actions';
 import Modal from '@/components/ui/modal';
 import ViewToggle from '@/components/ui/view-toggle';
+import CsvImportModal from '../csv-import-modal';
 
 interface VariantsClientProps {
   variants: any[];
@@ -165,6 +166,7 @@ export default function VariantsClient({ variants, materials }: VariantsClientPr
   const [view, setView] = useState<'table' | 'grid'>('table');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingVariant, setEditingVariant] = useState<any>(null);
 
   const handleEdit = (variant: any) => {
@@ -186,6 +188,11 @@ export default function VariantsClient({ variants, materials }: VariantsClientPr
     const formData = new FormData(e.currentTarget);
     await createVariant(formData);
     setIsAddModalOpen(false);
+    window.location.reload();
+  };
+
+  const handleImportComplete = () => {
+    setIsImportModalOpen(false);
     window.location.reload();
   };
 
@@ -211,6 +218,15 @@ export default function VariantsClient({ variants, materials }: VariantsClientPr
             {variants.length} {variants.length === 1 ? 'variante' : 'variantes'}
           </span>
           <ViewToggle view={view} onViewChange={setView} />
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-orange-700 font-medium rounded-lg border border-orange-200 hover:bg-orange-50 focus:ring-2 focus:ring-orange-500 focus:ring-offset-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Importer CSV
+          </button>
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
@@ -248,17 +264,39 @@ export default function VariantsClient({ variants, materials }: VariantsClientPr
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">Aucune variante pour le moment</h3>
           <p className="text-gray-600 mb-4">Commencez par créer votre première variante.</p>
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Ajouter Variante
-          </button>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white text-orange-700 font-medium rounded-lg border border-orange-200 hover:bg-orange-50 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Importer CSV
+            </button>
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Ajouter Variante
+            </button>
+          </div>
         </div>
       )}
+
+      <CsvImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        title="Importer des Variantes"
+        entityType="variantes"
+        requiredColumns={['material / matériau / materialid', 'avgUnitPrice', 'minAlert', 'initialQuantity']}
+        sampleRows={['material,avgUnitPrice,minAlert,initialQuantity', 'Acier,12.50,10,100', 'PVC,8.25,20,50']}
+        importAction={importCsvVariants}
+        onComplete={handleImportComplete}
+      />
 
       {/* Add Modal */}
       <Modal

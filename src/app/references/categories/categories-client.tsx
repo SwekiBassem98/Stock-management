@@ -1,9 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { createCategory, updateCategory, deleteCategory } from './actions';
+import { createCategory, updateCategory, deleteCategory, importCsvCategories } from './actions';
 import Modal from '@/components/ui/modal';
 import ViewToggle from '@/components/ui/view-toggle';
+import CsvImportModal from '../csv-import-modal';
 
 interface CategoriesClientProps {
   categories: any[];
@@ -118,6 +119,7 @@ export default function CategoriesClient({ categories }: CategoriesClientProps) 
   const [view, setView] = useState<'table' | 'grid'>('table');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any>(null);
 
   const handleEdit = (category: any) => {
@@ -142,6 +144,11 @@ export default function CategoriesClient({ categories }: CategoriesClientProps) 
     window.location.reload(); // Refresh to show updated data
   };
 
+  const handleImportComplete = () => {
+    setIsImportModalOpen(false);
+    window.location.reload();
+  };
+
   const handleEditSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const formData = new FormData(e.currentTarget);
@@ -164,6 +171,15 @@ export default function CategoriesClient({ categories }: CategoriesClientProps) 
             {categories.length} {categories.length === 1 ? 'catégorie' : 'catégories'}
           </span>
           <ViewToggle view={view} onViewChange={setView} />
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-indigo-700 font-medium rounded-lg border border-indigo-200 hover:bg-indigo-50 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Importer CSV
+          </button>
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
@@ -201,17 +217,39 @@ export default function CategoriesClient({ categories }: CategoriesClientProps) 
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">Aucune catégorie pour le moment</h3>
           <p className="text-gray-600 mb-4">Commencez par créer votre première catégorie.</p>
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Ajouter Catégorie
-          </button>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white text-indigo-700 font-medium rounded-lg border border-indigo-200 hover:bg-indigo-50 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Importer CSV
+            </button>
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Ajouter Catégorie
+            </button>
+          </div>
         </div>
       )}
+
+      <CsvImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        title="Importer des Catégories"
+        entityType="catégories"
+        requiredColumns={['name / nom / catégorie']}
+        sampleRows={['name', 'Acier', 'Aluminium']}
+        importAction={importCsvCategories}
+        onComplete={handleImportComplete}
+      />
 
       {/* Add Modal */}
       <Modal

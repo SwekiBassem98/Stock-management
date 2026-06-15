@@ -2,9 +2,10 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createMaterial, updateMaterial, deleteMaterial } from './actions';
+import { createMaterial, updateMaterial, deleteMaterial, importCsvMaterials } from './actions';
 import Modal from '@/components/ui/modal';
 import ViewToggle from '@/components/ui/view-toggle';
+import CsvImportModal from '../csv-import-modal';
 
 interface MaterialsClientProps {
   materials: any[];
@@ -137,6 +138,7 @@ export default function MaterialsClient({ materials, categories }: MaterialsClie
   const [view, setView] = useState<'table' | 'grid'>('table');
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<any>(null);
 
   const handleEdit = (material: any) => {
@@ -158,6 +160,11 @@ export default function MaterialsClient({ materials, categories }: MaterialsClie
     const formData = new FormData(e.currentTarget);
     await createMaterial(formData);
     setIsAddModalOpen(false);
+    router.refresh();
+  };
+
+  const handleImportComplete = () => {
+    setIsImportModalOpen(false);
     router.refresh();
   };
 
@@ -183,6 +190,15 @@ export default function MaterialsClient({ materials, categories }: MaterialsClie
             {materials.length} {materials.length === 1 ? 'matériau' : 'matériaux'}
           </span>
           <ViewToggle view={view} onViewChange={setView} />
+          <button
+            onClick={() => setIsImportModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-white text-blue-700 font-medium rounded-lg border border-blue-200 hover:bg-blue-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Importer CSV
+          </button>
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
@@ -220,17 +236,39 @@ export default function MaterialsClient({ materials, categories }: MaterialsClie
           </div>
           <h3 className="text-lg font-medium text-gray-900 mb-2">Aucun matériau pour le moment</h3>
           <p className="text-gray-600 mb-4">Commencez par créer votre premier matériau.</p>
-          <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-            </svg>
-            Ajouter Matériau
-          </button>
+          <div className="flex justify-center gap-3">
+            <button
+              onClick={() => setIsImportModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-white text-blue-700 font-medium rounded-lg border border-blue-200 hover:bg-blue-50 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              Importer CSV
+            </button>
+            <button
+              onClick={() => setIsAddModalOpen(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+              </svg>
+              Ajouter Matériau
+            </button>
+          </div>
         </div>
       )}
+
+      <CsvImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        title="Importer des Matériaux"
+        entityType="matériaux"
+        requiredColumns={['name / nom', 'unit / unité', 'category / catégorie / categoryid']}
+        sampleRows={['name,unit,category', 'Acier,kg,Métaux', 'PVC,m,Bâtiment']}
+        importAction={importCsvMaterials}
+        onComplete={handleImportComplete}
+      />
 
       {/* Add Modal */}
       <Modal
